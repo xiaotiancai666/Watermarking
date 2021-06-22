@@ -17,7 +17,7 @@ password = "Hello world!"
 msg = "10110110"
 ref = []
 path = "D:\\IH_lab2\\data_new"
-threshold = 0.7
+threshold = 0.2
 #N = 2448*3264
 
 def generate_ref(password,shape):
@@ -52,7 +52,15 @@ def embedding(Wa_ref,Cover):
     
     return Cover_w.astype('uint8')
 
-def decode(Cover_w,ref):
+def decode_zcc(Cover_w,ref):
+    zcc = []
+    for i in range(8):
+        Cover_w_nor = (Cover_w-np.mean(Cover_w))/(np.std(Cover_w)*512)
+        ref_nor = (ref[i]-np.mean(ref[i]))/(np.std(ref[i])*512)
+        #print(Cover_w_nor)
+        zcc.append(np.sum(Cover_w_nor*ref_nor))
+    return zcc
+def decode_zlc(Cover_w,ref):
     zlc = []
     for i in range(8):
         zlc.append(np.mean(Cover_w*ref[i]))
@@ -65,20 +73,21 @@ if __name__ == "__main__":
     files = os.listdir(path)
 
 #生成当前的reference集合，大小暂时设定为512*512，之后会随着实际进行修改
-    for i in range(8):
-        ref_temp = generate_ref(password,(512,512));
+    for i in range(len(msg)):
+        ref_temp = generate_ref(password+":"+str(i),(512,512));
         ref.append(ref_temp)
     
     fn = 0
     fp = 0
-    for f in files:
+    for j in range(40):
+        f = files[j]
         #embedding
         Cover = cv2.imread(path+'/'+f)
         if Cover is None: #or not Cover.shape == (2448,3264,3):
             continue
         print("The picture "+f+" is processing...")
         Cover = cv2.cvtColor(Cover,cv2.COLOR_BGR2GRAY)
-        for i in range(8):
+        for i in range(len(msg)):
             ref[i] = np.resize(ref[i],Cover.shape)
         Wa_ref = Wa_ref_cal(ref,msg)
         Cover_w = embedding(Wa_ref,Cover)
@@ -88,39 +97,35 @@ if __name__ == "__main__":
         zlclist = []
         zlclist_no_watermark = []
         result = ""
-        zlclist = decode(Cover_w,ref)
-        zlclist_no_watermark = decode(Cover,ref)
-        for i in range(8):
-            if zlclist[i] > 0:
-                msg+="1"
-            else:
-                msg+="0"
+        zlclist = decode_zcc(Cover_w,ref)
+        zlclist_no_watermark = decode_zcc(Cover,ref)
         
         #计算fp
         print("The result of "+f+" is:"+str(zlclist))
         count_0 = 0
         count_1 = 0
         count_no = 0
+        #计算解码正确率
+        correct_count = 0
         for i in range(8):
             #zlclist_0[i] -= zlclist_ref[0]
             if zlclist[i]>= threshold:
-                result.append(1)
+                result+="1"
                 count_0+=1
             elif zlclist[i]<= -threshold:
-                result.append(-1)
+                result+="0"
                 count_1+=1
             else:
-                result.append(0)
+                print("No watermark!")
                 count_no+=1
+            if len(result) and result[len(result)-1]==msg[i]:
+                correct_count+=1
         if count_0>4:
             fp = fp
         elif count_1>4 or count_no>4:
             fp += 1
-        #计算解码正确率
-        correct_count = 0
-        for i in range(8):
-            if result[i] == msg[i]:
-                correct_count+=1
+        
+                
         print("The correctness of the decoding is:"+str(correct_count/8))
         #计算fn
         count_0 = 0
@@ -135,8 +140,8 @@ if __name__ == "__main__":
                 count_no+=1
         if count_0>4 or count_1>4:
             fn+=1
-    fp_possi = fp/200.0
-    fn_possi = fn/200.0
+    fp_possi = fp/40.0
+    fn_possi = fn/40.0
 
 print("False positive:"+str(fp_possi))
 print("False negative:"+str(fn_possi))
